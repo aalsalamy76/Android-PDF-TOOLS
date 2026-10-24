@@ -1,0 +1,42 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip the project
+        run: |
+          for z in *.zip; do if [ -f "$z" ]; then unzip -q -o "$z"; fi; done
+          if [ -f PdfTools/gradlew ]; then echo "DIR=PdfTools" >> "$GITHUB_ENV"; else echo "DIR=." >> "$GITHUB_ENV"; fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build APK
+        working-directory: ${{ env.DIR }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          grep -E "^e: " build.log | head -40 | while read -r line; do echo "::error::$line"; done
+          exit $status
+
+      - name: Publish APK in Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: PdfTools APK ${{ github.run_number }}
+          files: ${{ env.DIR }}/app/build/outputs/apk/debug/app-debug.apk
